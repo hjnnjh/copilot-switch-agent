@@ -1,7 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# 解析符号链接以获取真实脚本路径
+SCRIPT_PATH="$0"
+if [[ -L "$SCRIPT_PATH" ]]; then
+  SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+fi
+BASE_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 CONFIG="$BASE_DIR/config/copilot-switch.conf"
 TEMPLATE="$BASE_DIR/templates/com.zephyrus.copilot-api.plist.tmpl"
 DEFAULT_LABEL="com.zephyrus.copilot-api"
@@ -27,6 +32,7 @@ usage() {
   status                查看 launchctl 状态
   switch [--account t] [--dir path]  切换账户或目录（目录切换会重载）
   login                 执行 bun run start auth，成功后自动重启
+  check-usage           查看 GitHub Copilot 使用量统计
   logs [out|err|all] [-f]  查看日志（默认 out）
   list                  列出已知目录/当前默认账户
   config show           展示配置
@@ -196,6 +202,13 @@ cmd_login(){
   cmd_restart
 }
 
+cmd_check_usage(){
+  load_config
+  [[ -z "$DEFAULT_INSTALL_DIR" ]] && { echo_err "缺少 default_install_dir"; exit 1; }
+  [[ -d "$DEFAULT_INSTALL_DIR" ]] || { echo_err "目录不存在: $DEFAULT_INSTALL_DIR"; exit 1; }
+  ( cd "$DEFAULT_INSTALL_DIR" && PATH="$PATH_ENV" bun run start check-usage )
+}
+
 cmd_logs(){
   load_config
   local target="out" follow=false
@@ -300,6 +313,7 @@ main(){
     status) shift; cmd_status "$@";;
     switch) shift; cmd_switch "$@";;
     login) shift; cmd_login "$@";;
+    check-usage) shift; cmd_check_usage "$@";;
     logs) shift; cmd_logs "$@";;
     list) shift; cmd_list "$@";;
     config) shift; cmd_config "$@";;
