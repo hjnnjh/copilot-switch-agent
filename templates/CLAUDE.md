@@ -24,6 +24,20 @@
 - 属性：`KeepAlive` 与 `RunAtLoad` 启用，日志路径独立配置。
 - 依赖：`bun` 运行 copilot-api；渲染后使用 `plutil -lint` 校验。
 
+## plist 结构说明
+模板文件为标准 Apple plist XML 格式，包含以下关键配置：
+
+| 键 | 值/说明 |
+| --- | --- |
+| `Label` | 服务标识符（`__LABEL__`） |
+| `ProgramArguments` | 启动命令数组（bash -c 执行） |
+| `EnvironmentVariables` | 环境变量字典（COPILOT_ACCOUNT_TYPE、COPILOT_INSTALL_DIR、PATH） |
+| `WorkingDirectory` | 工作目录（`__INSTALL_DIR__`） |
+| `KeepAlive` | `true` - 服务崩溃后自动重启 |
+| `RunAtLoad` | `true` - 系统启动时自动运行 |
+| `StandardOutPath` | 标准输出日志路径 |
+| `StandardErrorPath` | 标准错误日志路径 |
+
 ## 数据模型
 - plist 文件，无额外数据模型。
 
@@ -34,9 +48,11 @@
 ## 常见问题 (FAQ)
 - PATH 中缺少 bun：更新 PATH_ENV 或安装 bun 到模板 PATH 覆盖的目录。
 - 安装目录权限不足：会导致 launchctl 启动失败，需确保可读写与可执行。
+- XML 转义问题：模板中 `&&` 已正确转义为 `&amp;&amp;`。
 
 ## 相关文件清单
-- `templates/com.zephyrus.copilot-api.plist.tmpl`
+- `templates/com.zephyrus.copilot-api.plist.tmpl` - plist 模板（41 行）
 
 ## 变更记录
+- 2025-12-11T16:23:46+0800 更新文档：补充 plist 结构说明、XML 转义说明。
 - 2025-12-11T12:27:24+0800 新建模块文档。

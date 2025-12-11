@@ -45,8 +45,21 @@
   - 日志：`~/Library/Logs/<label>.out.log`、`~/Library/Logs/<label>.err.log`
   - CLI 链接：`~/bin/copilotctl`
 
+## 内部实现要点
+- `escape_sed()` 函数：对 sed 替换中的特殊字符进行转义。
+- 路径规范化：使用 `$(cd "$path" && pwd)` 确保绝对路径。
+- 账户类型校验：仅接受 `individual|business|enterprise`。
+- CLI 链接策略：优先 `ln -sf`，失败时 `cp`。
+- 卸载时 CLI 删除保护：仅当 `realpath` 指向本仓库 `bin/copilotctl` 时才删除。
+
 ## 数据模型
 - 无结构化数据；配置为简单 `key=value` 文本。
+- 配置文件字段：
+  - `default_install_dir` - 当前使用的安装目录
+  - `default_account_type` - 当前账户类型
+  - `known_install_dirs` - 历史使用过的目录列表
+  - `log_dir` - 日志存放目录
+  - `label` - LaunchAgent 标识符
 
 ## 测试与质量
 - 手动：`plutil -lint ~/Library/LaunchAgents/<label>.plist`，`launchctl print gui/$(id -u)/<label>`，检查日志输出。
@@ -57,9 +70,10 @@
 - 自定义 label 后卸载失败：卸载时需带上相同 `--label` 或显式 `--plist`。
 
 ## 相关文件清单
-- `scripts/install_copilot_agent.sh`
-- `scripts/uninstall_copilot_agent.sh`
+- `scripts/install_copilot_agent.sh` - 安装脚本（135 行）
+- `scripts/uninstall_copilot_agent.sh` - 卸载脚本（155 行）
 - 运行期生成：`config/copilot-switch.conf`
 
 ## 变更记录
+- 2025-12-11T16:23:46+0800 更新文档：补充内部实现要点、配置文件字段说明。
 - 2025-12-11T12:27:24+0800 新建模块文档。

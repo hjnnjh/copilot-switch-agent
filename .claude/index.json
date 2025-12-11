@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-12-11T12:27:24+0800",
+  "timestamp": "2025-12-11T16:23:46+0800",
   "project": "copilot-switch",
   "root_docs": {
     "path": "CLAUDE.md"
@@ -26,7 +26,13 @@
         "cli_link": "~/bin/copilotctl"
       },
       "tests": [],
-      "data_models": [],
+      "data_models": [
+        {
+          "name": "copilot-switch.conf",
+          "format": "key=value",
+          "fields": ["default_install_dir", "default_account_type", "known_install_dirs", "log_dir", "label"]
+        }
+      ],
       "coverage": {
         "files_scanned": 2,
         "files_total": 2,
@@ -54,47 +60,83 @@
         "files_total": 1,
         "status": "complete"
       }
+    },
+    {
+      "name": "bin",
+      "path": "bin",
+      "docs": null,
+      "responsibility": "CLI 工具 copilotctl（二进制文件，管理服务生命周期）",
+      "entries": [
+        "bin/copilotctl"
+      ],
+      "interfaces": [
+        "start/stop/restart/status - 服务生命周期管理",
+        "switch --account/--dir - 切换账户类型或安装目录",
+        "login - GitHub 认证",
+        "check-usage - 查看 Copilot 使用量",
+        "logs - 查看日志",
+        "list/config - 配置管理",
+        "heal - 健康检查"
+      ],
+      "important_paths": {
+        "cli_binary": "bin/copilotctl",
+        "cli_link": "~/bin/copilotctl"
+      },
+      "tests": [],
+      "data_models": [],
+      "coverage": {
+        "files_scanned": 0,
+        "files_total": 1,
+        "status": "skipped",
+        "reason": "二进制文件，不读取内容"
+      }
     }
   ],
   "coverage": {
-    "files_total_estimated": 15,
-    "files_scanned": 5,
-    "coverage_ratio": 0.33,
-    "truncated": false
+    "files_total_estimated": 10,
+    "files_scanned": 7,
+    "coverage_ratio": 0.70,
+    "truncated": false,
+    "details": {
+      "source_files": {
+        "scanned": ["scripts/install_copilot_agent.sh", "scripts/uninstall_copilot_agent.sh", "templates/com.zephyrus.copilot-api.plist.tmpl"],
+        "total": 3
+      },
+      "documentation": {
+        "scanned": ["CLAUDE.md", "README.md", "scripts/CLAUDE.md", "templates/CLAUDE.md"],
+        "total": 4
+      },
+      "config_files": {
+        "scanned": [".gitignore", ".serena/project.yml"],
+        "total": 2
+      }
+    }
   },
   "ignored": {
     "patterns": [
       ".git/**",
       "node_modules/**",
-      "dist/**",
-      "build/**",
       "*.log",
       "*.lock",
-      "*.bin",
-      ".DS_Store"
+      ".DS_Store",
+      ".spec-workflow/archive/**",
+      "config/copilot-switch.conf"
     ],
     "skipped": [
       {
         "path": "bin/copilotctl",
-        "reason": "二进制文件，未读取"
+        "reason": "二进制文件，未读取内容"
       },
       {
-        "path": ".spec-workflow/**",
-        "reason": "项目外部模板，未纳入本次扫描"
+        "path": ".spec-workflow/templates/**",
+        "reason": "项目外部模板，与核心功能无关"
       },
       {
-        "path": ".claude/settings.local.json",
-        "reason": "配置文件，未纳入本次扫描"
-      },
-      {
-        "path": ".serena/.gitignore",
-        "reason": "辅助配置，未纳入本次扫描"
+        "path": ".spec-workflow/user-templates/**",
+        "reason": "用户模板目录，与核心功能无关"
       }
     ]
   },
-  "gaps": [
-    ".spec-workflow/templates/** 未扫描（设计/需求模板）",
-    ".claude/settings.local.json 未扫描（项目配置）",
-    ".serena/.gitignore 未扫描（辅助配置）"
-  ]
+  "gaps": [],
+  "next_steps": []
 }

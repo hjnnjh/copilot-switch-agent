@@ -15,6 +15,8 @@
 graph TD
     A["(根) copilot-switch"] --> B["scripts"];
     A --> C["templates"];
+    A --> D["bin"];
+    A --> E["config"];
 
     click B "./scripts/CLAUDE.md" "查看 scripts 模块文档"
     click C "./templates/CLAUDE.md" "查看 templates 模块文档"
@@ -25,6 +27,8 @@ graph TD
 | --- | --- | --- | --- |
 | scripts | `scripts` | 安装/卸载 copilot-api 的 LaunchAgent，生成配置与 CLI 链接 | [scripts/CLAUDE.md](./scripts/CLAUDE.md) |
 | templates | `templates` | LaunchAgent plist 模板（启动命令、环境变量、日志配置） | [templates/CLAUDE.md](./templates/CLAUDE.md) |
+| bin | `bin` | CLI 工具 `copilotctl`（二进制，管理服务生命周期） | 二进制文件，不可修改 |
+| config | `config` | 运行时配置文件（由安装脚本生成，已 gitignore） | - |
 
 ## 运行与开发
 - 前置依赖：macOS、`launchctl`、`plutil`、`sed`、`bash`，以及运行 copilot-api 所需的 `bun`。
@@ -35,12 +39,19 @@ graph TD
   - `./scripts/uninstall_copilot_agent.sh [--label <名称>] [--plist <path>] [--config <path>] [--log-dir <path>] [--remove-logs] [--remove-config] [--remove-cli] [--force]`
   - 默认行为：`launchctl bootout` + 删除 plist，可选清理日志/配置/CLI。
 - PATH 提示：如需直接调用 `copilotctl`，确保 `~/bin` 在 PATH 中。
+- CLI 常用命令：
+  - `copilotctl status` - 查看服务运行状态
+  - `copilotctl switch --account <type>` - 切换账户类型
+  - `copilotctl login` - GitHub 认证登录
+  - `copilotctl check-usage` - 查看 Copilot 使用量
+  - `copilotctl logs` - 查看服务日志
 
 ## 测试策略
 - 暂无自动化测试；手动验证：
   - `plutil -lint ~/Library/LaunchAgents/<label>.plist` 校验 plist。
   - `launchctl print gui/$(id -u)/<label>` 查看服务状态。
   - 检查日志：`~/Library/Logs/<label>.out.log` 与 `~/Library/Logs/<label>.err.log`。
+  - `copilotctl heal` 执行健康检查。
 
 ## 编码规范
 - Shell：`set -euo pipefail`、使用 `[[ ]]`、函数化参数解析与校验；模板渲染使用 `sed`，渲染后用 `plutil` 校验。
@@ -50,6 +61,8 @@ graph TD
 - 优先关注 `scripts/` 与 `templates/`；`bin/copilotctl` 为二进制，不要修改。
 - 配置与日志路径依赖用户环境，勿伪造路径或提交用户本地数据。
 - 需要扩展时，请保持与现有参数/文件约定兼容。
+- 该项目使用 Serena 进行项目管理，语言配置为 bash。
 
 ## 变更记录
+- 2025-12-11T16:23:46+0800 更新文档：完善模块结构图、补充 CLI 命令说明、增强覆盖率。
 - 2025-12-11T12:27:24+0800 初始化 CLAUDE 文档与模块索引。
