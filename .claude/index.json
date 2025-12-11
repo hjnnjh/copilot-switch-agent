@@ -1,0 +1,100 @@
+{
+  "timestamp": "2025-12-11T12:27:24+0800",
+  "project": "copilot-switch",
+  "root_docs": {
+    "path": "CLAUDE.md"
+  },
+  "modules": [
+    {
+      "name": "scripts",
+      "path": "scripts",
+      "docs": "scripts/CLAUDE.md",
+      "responsibility": "安装/卸载 macOS LaunchAgent 以运行 copilot-api，生成配置与 CLI 链接",
+      "entries": [
+        "scripts/install_copilot_agent.sh",
+        "scripts/uninstall_copilot_agent.sh"
+      ],
+      "interfaces": [
+        "安装脚本参数 --dir/--account/--label/--log-dir",
+        "卸载脚本参数 --label/--plist/--config/--log-dir 及清理开关",
+        "生成 LaunchAgent plist、config、日志、copilotctl 链接"
+      ],
+      "important_paths": {
+        "config": "config/copilot-switch.conf (运行时生成)",
+        "launch_agent": "~/Library/LaunchAgents/<label>.plist",
+        "logs": "~/Library/Logs/<label>.out.log / <label>.err.log",
+        "cli_link": "~/bin/copilotctl"
+      },
+      "tests": [],
+      "data_models": [],
+      "coverage": {
+        "files_scanned": 2,
+        "files_total": 2,
+        "status": "complete"
+      }
+    },
+    {
+      "name": "templates",
+      "path": "templates",
+      "docs": "templates/CLAUDE.md",
+      "responsibility": "LaunchAgent plist 模板渲染 (启动命令、环境变量、日志路径)",
+      "entries": [
+        "templates/com.zephyrus.copilot-api.plist.tmpl"
+      ],
+      "interfaces": [
+        "占位符 __LABEL__/__INSTALL_DIR__/__ACCOUNT_TYPE__/__PATH_ENV__/__LOG_OUT__/__LOG_ERR__"
+      ],
+      "important_paths": {
+        "render_output": "~/Library/LaunchAgents/<label>.plist"
+      },
+      "tests": [],
+      "data_models": [],
+      "coverage": {
+        "files_scanned": 1,
+        "files_total": 1,
+        "status": "complete"
+      }
+    }
+  ],
+  "coverage": {
+    "files_total_estimated": 15,
+    "files_scanned": 5,
+    "coverage_ratio": 0.33,
+    "truncated": false
+  },
+  "ignored": {
+    "patterns": [
+      ".git/**",
+      "node_modules/**",
+      "dist/**",
+      "build/**",
+      "*.log",
+      "*.lock",
+      "*.bin",
+      ".DS_Store"
+    ],
+    "skipped": [
+      {
+        "path": "bin/copilotctl",
+        "reason": "二进制文件，未读取"
+      },
+      {
+        "path": ".spec-workflow/**",
+        "reason": "项目外部模板，未纳入本次扫描"
+      },
+      {
+        "path": ".claude/settings.local.json",
+        "reason": "配置文件，未纳入本次扫描"
+      },
+      {
+        "path": ".serena/.gitignore",
+        "reason": "辅助配置，未纳入本次扫描"
+      }
+    ]
+  },
+  "gaps": [
+    ".spec-workflow/templates/** 未扫描（设计/需求模板）",
+    ".claude/settings.local.json 未扫描（项目配置）",
+    ".serena/.gitignore 未扫描（辅助配置）"
+  ]
+}

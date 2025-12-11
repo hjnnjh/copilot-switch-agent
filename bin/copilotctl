@@ -1,0 +1,312 @@
+#!/bin/bash
+set -euo pipefail
+
+BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CONFIG="$BASE_DIR/config/copilot-switch.conf"
+TEMPLATE="$BASE_DIR/templates/com.zephyrus.copilot-api.plist.tmpl"
+DEFAULT_LABEL="com.zephyrus.copilot-api"
+DEFAULT_ACCOUNT="individual"
+DEFAULT_LOG_DIR="$HOME/Library/Logs"
+PATH_ENV="$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+VALID_TYPES="individual business enterprise"
+
+# 全局状态（由 load_config 填充）
+LABEL="$DEFAULT_LABEL"
+DEFAULT_INSTALL_DIR=""
+DEFAULT_ACCOUNT_TYPE="$DEFAULT_ACCOUNT"
+KNOWN_INSTALL_DIRS=""
+LOG_DIR="$DEFAULT_LOG_DIR"
+
+usage() {
+  cat <<'EOF'
+用法: copilotctl <command> [options]
+命令：
+  start                 启动（渲染 plist 并 bootstrap）
+  stop                  停止（bootout）
+  restart               重启（stop + start）
+  status                查看 launchctl 状态
+  switch [--account t] [--dir path]  切换账户或目录（目录切换会重载）
+  login                 执行 bun run start auth，成功后自动重启
+  logs [out|err|all] [-f]  查看日志（默认 out）
+  list                  列出已知目录/当前默认账户
+  config show           展示配置
+  config set <key> <val> 修改配置（key: default_install_dir|default_account_type|log_dir）
+  heal                  自检：bun/目录/plist/log 权限
+  help                  本帮助
+EOF
+}
+
+echo_err(){ printf '错误: %s\n' "$*" >&2; }
+
+echo_info(){ printf '%s\n' "$*"; }
+
+escape_sed(){ printf '%s' "$1" | sed -e 's/[\\/&]/\\&/g'; }
+
+load_config(){
+  # 设定默认
+  LABEL="$DEFAULT_LABEL"
+  DEFAULT_INSTALL_DIR=""
+  DEFAULT_ACCOUNT_TYPE="$DEFAULT_ACCOUNT"
+  KNOWN_INSTALL_DIRS=""
+  LOG_DIR="$DEFAULT_LOG_DIR"
+  # 读取配置文件（key=value）
+  if [[ -f "$CONFIG" ]]; then
+    while IFS='=' read -r k v; do
+      [[ -z "$k" || "$k" =~ ^# ]] && continue
+      case "$k" in
+        label) LABEL="$v" ;;
+        default_install_dir) DEFAULT_INSTALL_DIR="$v" ;;
+        default_account_type) DEFAULT_ACCOUNT_TYPE="$v" ;;
+        known_install_dirs) KNOWN_INSTALL_DIRS="$v" ;;
+        log_dir) LOG_DIR="$v" ;;
+      esac
+    done < "$CONFIG"
+  fi
+}
+
+save_config(){
+  cat > "$CONFIG" <<EOF
+default_install_dir=$DEFAULT_INSTALL_DIR
+default_account_type=$DEFAULT_ACCOUNT_TYPE
+known_install_dirs=$KNOWN_INSTALL_DIRS
+log_dir=$LOG_DIR
+label=$LABEL
+EOF
+}
+
+plist_path(){ echo "$HOME/Library/LaunchAgents/$LABEL.plist"; }
+
+log_out(){ echo "$LOG_DIR/$LABEL.out.log"; }
+log_err(){ echo "$LOG_DIR/$LABEL.err.log"; }
+
+ensure_template(){ [[ -f "$TEMPLATE" ]] || { echo_err "缺少模板 $TEMPLATE"; exit 1; }; }
+
+validate_account(){
+  local t="$1"; local ok=false
+  for x in $VALID_TYPES; do [[ "$t" == "$x" ]] && ok=true && break; done
+  [[ "$ok" == true ]] || { echo_err "账户类型必须为 individual|business|enterprise"; exit 1; }
+}
+
+render_plist(){
+  ensure_template
+  local plist="$(plist_path)"
+  mkdir -p "$LOG_DIR" "$HOME/Library/LaunchAgents"
+  local LOG_OUT_F="$(log_out)"
+  local LOG_ERR_F="$(log_err)"
+  sed \
+    -e "s/__LABEL__/$(escape_sed "$LABEL")/g" \
+    -e "s#__INSTALL_DIR__#$(escape_sed "$DEFAULT_INSTALL_DIR")#g" \
+    -e "s#__ACCOUNT_TYPE__#$(escape_sed "$DEFAULT_ACCOUNT_TYPE")#g" \
+    -e "s#__LOG_OUT__#$(escape_sed "$LOG_OUT_F")#g" \
+    -e "s#__LOG_ERR__#$(escape_sed "$LOG_ERR_F")#g" \
+    -e "s#__PATH_ENV__#$(escape_sed "$PATH_ENV")#g" \
+    "$TEMPLATE" > "$plist"
+  plutil -lint "$plist" >/dev/null
+}
+
+bootout(){
+  local plist="$(plist_path)"
+  launchctl bootout gui/$(id -u) "$plist" >/dev/null 2>&1 || true
+}
+
+bootstrap(){
+  local plist="$(plist_path)"
+  launchctl bootstrap gui/$(id -u) "$plist"
+}
+
+cmd_start(){
+  load_config
+  [[ -z "$DEFAULT_INSTALL_DIR" ]] && { echo_err "配置缺少 default_install_dir，请先运行安装脚本或 switch --dir"; exit 1; }
+  render_plist
+  bootout
+  bootstrap
+  echo_info "✓ 已启动 (label=$LABEL)"
+}
+
+cmd_stop(){
+  load_config
+  bootout
+  echo_info "✓ 已停止 (label=$LABEL)"
+}
+
+cmd_restart(){
+  cmd_stop
+  cmd_start
+}
+
+cmd_status(){
+  load_config
+  local plist="$(plist_path)"
+  if [[ ! -f "$plist" ]]; then
+    echo_err "未找到 plist: $plist"
+    exit 1
+  fi
+  if ! launchctl print gui/$(id -u)/"$LABEL" 2>/dev/null; then
+    echo_err "未运行或未加载 (label=$LABEL)"
+    exit 1
+  fi
+}
+
+update_known_dirs(){
+  local dir="$1"
+  IFS=',' read -ra arr <<<"$KNOWN_INSTALL_DIRS"
+  for d in "${arr[@]}"; do [[ "$d" == "$dir" ]] && { KNOWN_INSTALL_DIRS="$KNOWN_INSTALL_DIRS"; return; }; done
+  if [[ -z "$KNOWN_INSTALL_DIRS" ]]; then
+    KNOWN_INSTALL_DIRS="$dir"
+  else
+    KNOWN_INSTALL_DIRS="$KNOWN_INSTALL_DIRS,$dir"
+  fi
+}
+
+cmd_switch(){
+  load_config
+  local new_account="" new_dir=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --account) new_account="$2"; shift 2;;
+      --dir) new_dir="$2"; shift 2;;
+      *) echo_err "未知参数 $1"; exit 1;;
+    esac
+  done
+  if [[ -n "$new_account" ]]; then
+    validate_account "$new_account"
+    DEFAULT_ACCOUNT_TYPE="$new_account"
+  fi
+  if [[ -n "$new_dir" ]]; then
+    [[ -d "$new_dir" ]] || { echo_err "目录不存在: $new_dir"; exit 1; }
+    DEFAULT_INSTALL_DIR="$(cd "$new_dir" && pwd)"
+    update_known_dirs "$DEFAULT_INSTALL_DIR"
+  fi
+  if [[ -z "$new_account" && -z "$new_dir" ]]; then
+    echo_err "需指定 --account 或 --dir"
+    exit 1
+  fi
+  save_config
+  render_plist
+  bootout
+  bootstrap
+  echo_info "✓ 已更新: account=${DEFAULT_ACCOUNT_TYPE}, dir=${DEFAULT_INSTALL_DIR}"
+}
+
+cmd_login(){
+  load_config
+  [[ -z "$DEFAULT_INSTALL_DIR" ]] && { echo_err "缺少 default_install_dir"; exit 1; }
+  [[ -d "$DEFAULT_INSTALL_DIR" ]] || { echo_err "目录不存在: $DEFAULT_INSTALL_DIR"; exit 1; }
+  ( cd "$DEFAULT_INSTALL_DIR" && PATH="$PATH_ENV" bun run start auth )
+  cmd_restart
+}
+
+cmd_logs(){
+  load_config
+  local target="out" follow=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -f|--follow) follow=true; shift;;
+      out|err|all) target="$1"; shift;;
+      *) echo_err "未知参数 $1"; exit 1;;
+    esac
+  done
+  local o="$(log_out)" e="$(log_err)"
+  case "$target" in
+    out) files=($o);;
+    err) files=($e);;
+    all) files=($o $e);;
+  esac
+  if [[ "$follow" == true ]]; then
+    tail -f "${files[@]}"
+  else
+    tail -n 50 "${files[@]}"
+  fi
+}
+
+cmd_list(){
+  load_config
+  echo "label: $LABEL"
+  echo "default_account: $DEFAULT_ACCOUNT_TYPE"
+  echo "default_install_dir: $DEFAULT_INSTALL_DIR"
+  echo "known_install_dirs:"
+  IFS=',' read -ra arr <<<"$KNOWN_INSTALL_DIRS"
+  for d in "${arr[@]}"; do
+    [[ -z "$d" ]] && continue
+    mark=""
+    [[ "$d" == "$DEFAULT_INSTALL_DIR" ]] && mark="*"
+    echo "  $mark$d"
+  done
+}
+
+cmd_config(){
+  load_config
+  [[ $# -lt 1 ]] && { echo_err "用法: config show|set"; exit 1; }
+  case "$1" in
+    show)
+      echo "label=$LABEL"
+      echo "default_install_dir=$DEFAULT_INSTALL_DIR"
+      echo "default_account_type=$DEFAULT_ACCOUNT_TYPE"
+      echo "known_install_dirs=$KNOWN_INSTALL_DIRS"
+      echo "log_dir=$LOG_DIR"
+      ;;
+    set)
+      [[ $# -eq 3 ]] || { echo_err "用法: config set <key> <value>"; exit 1; }
+      local key="$2" val="$3"
+      case "$key" in
+        default_install_dir)
+          [[ -d "$val" ]] || { echo_err "目录不存在: $val"; exit 1; }
+          DEFAULT_INSTALL_DIR="$(cd "$val" && pwd)"
+          update_known_dirs "$DEFAULT_INSTALL_DIR"
+          ;;
+        default_account_type)
+          validate_account "$val"
+          DEFAULT_ACCOUNT_TYPE="$val"
+          ;;
+        log_dir)
+          LOG_DIR="$(cd "$val" && pwd)"
+          ;;
+        *) echo_err "不支持的 key: $key"; exit 1;;
+      esac
+      save_config
+      render_plist
+      bootout
+      bootstrap
+      echo_info "✓ 已更新配置并重载"
+      ;;
+    *) echo_err "未知子命令: $1"; exit 1;;
+  esac
+}
+
+cmd_heal(){
+  load_config
+  local ok=true
+  command -v bun >/dev/null 2>&1 || { echo_err "未找到 bun"; ok=false; }
+  [[ -n "$DEFAULT_INSTALL_DIR" && -d "$DEFAULT_INSTALL_DIR" ]] || { echo_err "安装目录缺失: $DEFAULT_INSTALL_DIR"; ok=false; }
+  [[ -f "$(plist_path)" ]] || { echo_err "plist 缺失: $(plist_path)"; ok=false; }
+  if ! plutil -lint "$(plist_path)" >/dev/null 2>&1; then echo_err "plist 校验失败"; ok=false; fi
+  mkdir -p "$LOG_DIR" || { echo_err "日志目录不可写: $LOG_DIR"; ok=false; }
+  if [[ "$ok" == true ]]; then
+    echo_info "✓ 健康检查通过"
+  else
+    exit 1
+  fi
+}
+
+main(){
+  if [[ $# -ge 1 && ( "$1" == "-h" || "$1" == "--help" ) ]]; then
+    usage; exit 0;
+  fi
+  [[ $# -lt 1 ]] && { usage; exit 1; }
+  case "$1" in
+    start) shift; cmd_start "$@";;
+    stop) shift; cmd_stop "$@";;
+    restart) shift; cmd_restart "$@";;
+    status) shift; cmd_status "$@";;
+    switch) shift; cmd_switch "$@";;
+    login) shift; cmd_login "$@";;
+    logs) shift; cmd_logs "$@";;
+    list) shift; cmd_list "$@";;
+    config) shift; cmd_config "$@";;
+    heal) shift; cmd_heal "$@";;
+    help|-h|--help) usage;;
+    *) echo_err "未知命令 $1"; usage; exit 1;;
+  esac
+}
+
+main "$@"
